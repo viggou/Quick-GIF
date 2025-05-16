@@ -65,6 +65,26 @@ struct ContentView: View {
     @State private var isInProgress: Bool = false
     @State private var progress: Double = 0.0
     
+    private var numericFramerate: Binding<String> {
+        Binding(
+            get: { framerate },
+            set: {
+                let filtered = $0.filter { $0.isNumber }
+                framerate = filtered
+            }
+        )
+    }
+    
+    private var numericResolution: Binding<String> {
+        Binding(
+            get: { resolution },
+            set: {
+                let filtered = $0.filter { $0.isNumber }
+                resolution = filtered
+            }
+        )
+    }
+    
     let allowedExtensions = [
         "png", "jpg", "jpeg", "bmp", "tiff", "tif", "gif", "webp", "pbm", "pgm", "ppm", "tga", "sgi", "jp2", "j2k", "jpf", "jpx", "j2c", "icns", "heic", "heif"
     ]
@@ -84,14 +104,14 @@ struct ContentView: View {
             
             HStack {
                 Text("Framerate:")
-                TextField("10", text: $framerate)
+                TextField("10", text: numericFramerate)
                     .frame(width: 60)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
             
             HStack {
                 Text("Resolution (width):")
-                TextField("640", text: $resolution)
+                TextField("640", text: numericResolution)
                     .frame(width: 60)
                     .textFieldStyle(RoundedBorderTextFieldStyle())
             }
@@ -203,6 +223,37 @@ struct ContentView: View {
         let uniqueExts = Set(filesToAnalyze.map { URL(fileURLWithPath: $0).pathExtension.lowercased() })
         let majorityExt = detectMajorityFileFormat(from: filesToAnalyze) ?? "png"
         
+        // treat file formats with multiple extensions the same
+        let fileTypeGroup: [String]
+        if majorityExt == "jpg" || majorityExt == "jpeg" {
+            fileTypeGroup = ["jpg", "jpeg"]
+        }
+        else if majorityExt == "tif" || majorityExt == "tiff" {
+            fileTypeGroup = ["tif", "tiff"]
+        }
+        else {
+            fileTypeGroup = [majorityExt]
+        }
+        
+        let inputFiles = filesToAnalyze.filter {
+            fileTypeGroup.contains(URL(fileURLWithPath: $0).pathExtension.lowercased())
+        }
+        
+        // copy images to temp directory
+        let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ffmpeg_input")
+        try? FileManager.default.removeItem(at: tempDir)
+        try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        
+        for (index, path) in inputFiles.enumerated() {
+            let source = URL(fileURLWithPath: path)
+            let dest = tempDir.appendingPathComponent(String(format: "img%03d.%@", index, majorityExt))
+            do {
+                try FileManager.default.copyItem(at: source, to: dest)
+            } catch {
+                print("Error copying \(source) to \(dest): \(error)")
+            }
+        }
+        
         if uniqueExts.count > 1 {
             status = "Warning: Mixed image formats detected. Using: \(majorityExt)"
             print("Warning: Mixed image formats detected. Using: \(majorityExt)")
@@ -214,53 +265,21 @@ struct ContentView: View {
         }
         print("Using file format: \(majorityExt)")
         
-        let inputImages: String
-        let folderURL = URL(fileURLWithPath: selectedPaths[0])
-        var folderPath: String = ""
-        var useGlob = false
-        
-        // Check if chosen path is a folder
-        if selectedPaths.count == 1 && FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDir), isDir.boolValue {
-            folderPath = folderURL.path
-            inputImages = "\(folderPath)/*.\(majorityExt)"
-            print("majority file type: \(majorityExt)")
-            useGlob = true
-        }
-        else {
-            let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ffmpeg_input")
-            try? FileManager.default.removeItem(at: tempDir)
-            try? FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
-            
-            for (index, path) in selectedPaths.enumerated() {
-                let source = URL(fileURLWithPath: path)
-                let dest = tempDir.appendingPathComponent(String(format: "img%03d.\(majorityExt)", index))
-                do {
-                    try FileManager.default.copyItem(at: source, to: dest)
-                }
-                catch {
-                    print("Error copying \(source) to \(dest): \(error)")
-                }
-            }
-            
-            inputImages = "\(tempDir.path)/img%03d.\(majorityExt)"
-        }
+        let inputImages = "\(tempDir.path)/img%03d.\(majorityExt)"
         
         guard let ffmpegPath = Bundle.main.path(forResource: "ffmpeg", ofType: "") else {
             status = "ffmpeg binary not found in bundle."
             return
         }
         
-        var args = [
-            "-y", // always overwrite
-            "-framerate", framerate
-        ]
-        
-        // if folder
-        if useGlob {
-            args += ["-pattern_type", "glob"]
+        guard let _ = Int(framerate), let _ = Int(resolution) else {
+            status = "Invalid framerate or resolution"
+            return
         }
         
-        args += [
+        let args = [
+            "-y", // always overwrite
+            "-framerate", framerate,
             "-i", inputImages,
             "-vf", "scale=w='if(gt(a,1),\(resolution),-2)':h='if(gt(a,1),-2,\(resolution))':force_original_aspect_ratio=decrease,pad=\(resolution):\(resolution):(ow-iw)/2:(oh-ih)/2:color=0x00000000",
             "-loop", "0",
@@ -275,20 +294,6 @@ struct ContentView: View {
         task.arguments = args
         task.standardOutput = outputPipe
         task.standardError = errorPipe
-        
-        /*DispatchQueue.global(qos: .background).async {
-            let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
-            if let text = String(data: output, encoding: .utf8) {
-                print("[stdout] \(text)")
-            }
-        }
-
-        DispatchQueue.global(qos: .background).async {
-            let error = errorPipe.fileHandleForReading.readDataToEndOfFile()
-            if let text = String(data: error, encoding: .utf8) {
-                print("[stderr] \(text)")
-            }
-        }*/
         
         outputPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
@@ -312,13 +317,19 @@ struct ContentView: View {
             }
         }
         
-        task.terminationHandler = { _ in
+        task.terminationHandler = { process in
             DispatchQueue.main.async {
                 isInProgress = false
                 progress = 1.0
-                status = "GIF created at \(outputPath)"
-                gifPreviewPath = outputPath
-                print("Finished.")
+                if process.terminationStatus == 0 {
+                    status = "GIF created at \(outputPath)"
+                    gifPreviewPath = outputPath
+                    print("Finished.")
+                }
+                else {
+                    status = "ffmpeg failed with exit code \(process.terminationStatus)."
+                    print("Error: ffmpeg failed with exit code \(process.terminationStatus).")
+                }
             }
         }
         

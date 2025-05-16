@@ -2,7 +2,7 @@
 //  Quick_GIFTests.swift
 //  Quick GIFTests
 //
-//  Created by Viggo on 15/05/2025.
+//  Created by Viggo Lekdorf on 15/05/2025.
 //
 
 import Testing
