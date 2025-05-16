@@ -9,6 +9,7 @@ import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 import WebKit
+import Combine
 
 struct AnimatedGIFView: NSViewRepresentable {
     let gifPath: String
@@ -65,26 +66,6 @@ struct ContentView: View {
     @State private var isInProgress: Bool = false
     @State private var progress: Double = 0.0
     
-    private var numericFramerate: Binding<String> {
-        Binding(
-            get: { framerate },
-            set: {
-                let filtered = $0.filter { $0.isNumber }
-                framerate = filtered
-            }
-        )
-    }
-    
-    private var numericResolution: Binding<String> {
-        Binding(
-            get: { resolution },
-            set: {
-                let filtered = $0.filter { $0.isNumber }
-                resolution = filtered
-            }
-        )
-    }
-    
     let allowedExtensions = [
         "png", "jpg", "jpeg", "bmp", "tiff", "tif", "gif", "webp", "pbm", "pgm", "ppm", "tga", "sgi", "jp2", "j2k", "jpf", "jpx", "j2c", "icns", "heic", "heif"
     ]
@@ -106,16 +87,28 @@ struct ContentView: View {
                 
                 HStack {
                     Text("Framerate:")
-                    TextField("10", text: numericFramerate)
+                    TextField("10", text: $framerate)
                         .frame(width: 60)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onReceive(Just(framerate)) { newValue in
+                            let filtered = newValue.filter { ("0"..."9").contains($0) }
+                            if filtered != newValue {
+                                self.framerate = String(filtered)
+                            }
+                        }
                 }
                 
                 HStack {
                     Text("Resolution (width):")
-                    TextField("640", text: numericResolution)
+                    TextField("640", text: $resolution)
                         .frame(width: 60)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .onReceive(Just(resolution)) { newValue in
+                            let filtered = newValue.filter { ("0"..."9").contains($0) }
+                            if filtered != newValue {
+                                self.resolution = String(filtered)
+                            }
+                        }
                 }
                 
                 Button("Generate GIF") {
