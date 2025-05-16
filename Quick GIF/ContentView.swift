@@ -65,6 +65,10 @@ struct ContentView: View {
     @State private var isInProgress: Bool = false
     @State private var progress: Double = 0.0
     
+    let allowedExtensions = [
+        "png", "jpg", "jpeg", "bmp", "tiff", "tif", "gif", "webp", "pbm", "pgm", "ppm", "tga", "sgi", "jp2", "j2k", "jpf", "jpx", "j2c", "icns", "heic", "heif"
+    ]
+    
     var body: some View {
         VStack(spacing: 10) {
             Text("Quick GIF").font(.title).padding(.top)
@@ -134,10 +138,6 @@ struct ContentView: View {
     }
     
     func updateImportedCountFromSelection() {
-        let allowedExtensions = [
-            "png", "jpg", "jpeg", "bmp", "tiff", "tif", "gif", "webp", "pbm", "pgm", "ppm", "tga", "sgi", "jp2", "j2k", "jpf", "jpx", "j2c", "icns", "heic", "heif"
-        ]
-        
         importedCount = 0
         
         if selectedPaths.count == 1 {
@@ -178,17 +178,14 @@ struct ContentView: View {
             return
         }
         
-        let allowedExtensions = [
-            "png", "jpg", "jpeg", "bmp", "tiff", "tif", "gif", "webp", "pbm", "pgm", "ppm", "tga", "sgi", "jp2", "j2k", "jpf", "jpx", "j2c", "icns", "heic", "heif"
-        ]
-        
+        outputPath = (NSTemporaryDirectory() as NSString).appendingPathComponent("output_\(UUID().uuidString).gif")
         var filesToAnalyze = selectedPaths
         importedCount = 0
+        var isDir: ObjCBool = false
         
         // if folder, check files inside
         if selectedPaths.count == 1 {
             let url = URL(fileURLWithPath: selectedPaths[0])
-            var isDir: ObjCBool = false
             if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
                 if let contents = try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: nil) {
                     filesToAnalyze = contents
@@ -198,34 +195,36 @@ struct ContentView: View {
                 }
             }
         }
-        if selectedPaths.count > 1 {
+        else {
             filesToAnalyze = selectedPaths.filter { allowedExtensions.contains(URL(fileURLWithPath: $0).pathExtension.lowercased()) }
             importedCount = filesToAnalyze.count
         }
         
         let uniqueExts = Set(filesToAnalyze.map { URL(fileURLWithPath: $0).pathExtension.lowercased() })
         let majorityExt = detectMajorityFileFormat(from: filesToAnalyze) ?? "png"
-        guard !majorityExt.isEmpty else {
-            status = "Error: could not determine file format"
-            return
-        }
-        print("Using file format: \(majorityExt)")
         
         if uniqueExts.count > 1 {
             status = "Warning: Mixed image formats detected. Using: \(majorityExt)"
             print("Warning: Mixed image formats detected. Using: \(majorityExt)")
         }
         
+        guard !majorityExt.isEmpty else {
+            status = "Error: could not determine file format"
+            return
+        }
+        print("Using file format: \(majorityExt)")
+        
         let inputImages: String
         let folderURL = URL(fileURLWithPath: selectedPaths[0])
         var folderPath: String = ""
+        var useGlob = false
         
         // Check if chosen path is a folder
-        var isDir: ObjCBool = false
         if selectedPaths.count == 1 && FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDir), isDir.boolValue {
             folderPath = folderURL.path
             inputImages = "\(folderPath)/*.\(majorityExt)"
-            print(majorityExt)
+            print("majority file type: \(majorityExt)")
+            useGlob = true
         }
         else {
             let tempDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("ffmpeg_input")
@@ -241,24 +240,23 @@ struct ContentView: View {
                 catch {
                     print("Error copying \(source) to \(dest): \(error)")
                 }
-                //let tempFileURL = tempDir.appendingPathComponent("\(index).png")
-                //try? FileManager.default.copyItem(at: URL(fileURLWithPath: path), to: dest)
             }
             
             inputImages = "\(tempDir.path)/img%03d.\(majorityExt)"
         }
         
-        //let inputPattern = "\(folderPath)/*.\(majorityExt)"
-        //print(FileManager.default.fileExists(atPath: inputPattern))
+        guard let ffmpegPath = Bundle.main.path(forResource: "ffmpeg", ofType: "") else {
+            status = "ffmpeg binary not found in bundle."
+            return
+        }
         
-        let ffmpegPath = Bundle.main.path(forResource: "ffmpeg", ofType: "")!
         var args = [
             "-y", // always overwrite
             "-framerate", framerate
         ]
         
-        // check if folder
-        if selectedPaths.count == 1 && FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDir), isDir.boolValue {
+        // if folder
+        if useGlob {
             args += ["-pattern_type", "glob"]
         }
         
@@ -270,38 +268,57 @@ struct ContentView: View {
         ]
         
         let task = Process()
-        task.launchPath = ffmpegPath
-        task.arguments = args
         let outputPipe = Pipe()
         let errorPipe = Pipe()
+        
+        task.launchPath = ffmpegPath
+        task.arguments = args
         task.standardOutput = outputPipe
         task.standardError = errorPipe
         
-        outputPipe.fileHandleForReading.readabilityHandler = { handle in
-            let data = handle.availableData
-            if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
-                print("[stdout] \(output)")
+        /*DispatchQueue.global(qos: .background).async {
+            let output = outputPipe.fileHandleForReading.readDataToEndOfFile()
+            if let text = String(data: output, encoding: .utf8) {
+                print("[stdout] \(text)")
             }
         }
 
+        DispatchQueue.global(qos: .background).async {
+            let error = errorPipe.fileHandleForReading.readDataToEndOfFile()
+            if let text = String(data: error, encoding: .utf8) {
+                print("[stderr] \(text)")
+            }
+        }*/
+        
+        outputPipe.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            if let text = String(data: data, encoding: .utf8) {
+                print("[stdout] \(text)")
+            }
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                try? handle.close()
+            }
+        }
+        
         errorPipe.fileHandleForReading.readabilityHandler = { handle in
             let data = handle.availableData
-            if !data.isEmpty, let output = String(data: data, encoding: .utf8) {
-                print("[stderr] \(output)")
+            if let text = String(data: data, encoding: .utf8) {
+                print("[stderr] \(text)")
+            }
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                try? handle.close()
             }
         }
         
         task.terminationHandler = { _ in
-            outputPipe.fileHandleForReading.readabilityHandler = nil
-            errorPipe.fileHandleForReading.readabilityHandler = nil
-            try? outputPipe.fileHandleForReading.close()
-            try? errorPipe.fileHandleForReading.close()
-            
             DispatchQueue.main.async {
                 isInProgress = false
                 progress = 1.0
                 status = "GIF created at \(outputPath)"
                 gifPreviewPath = outputPath
+                print("Finished.")
             }
         }
         
@@ -331,10 +348,16 @@ struct ContentView: View {
             for arg in args {
                 print("ARG: \(arg)")
             }
+            
+            if FileManager.default.fileExists(atPath: outputPath) {
+                try? FileManager.default.removeItem(atPath: outputPath)
+            }
+            
             try task.run()
         }
         catch {
             status = "Failed to run ffmpeg: \(error.localizedDescription)"
+            isInProgress = false
         }
     }
     
@@ -349,11 +372,15 @@ struct ContentView: View {
         }
         
         do {
+            if FileManager.default.fileExists(atPath: exportURL.path) {
+                try FileManager.default.removeItem(at: exportURL)
+            }
             try FileManager.default.copyItem(atPath: outputPath, toPath: exportURL.path)
             status = "GIF exported to \(exportURL.path)"
         }
         catch {
             status = "Failed to export GIF: \(error.localizedDescription)"
+            print("Failed to export GIF: \(error.localizedDescription)")
         }
     }
 }
