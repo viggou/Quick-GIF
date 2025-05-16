@@ -91,63 +91,67 @@ struct ContentView: View {
     
     var body: some View {
         VStack(spacing: 10) {
-            Text("Quick GIF").font(.title).padding(.top)
-            Text("Quickly generate a GIF using ffmpeg")
-        }
-        
-        VStack(spacing: 20) {
-            Button("Select images or folder") {
-                selectFiles()
+            Spacer()
+            VStack(spacing: 10) {
+                Text("Quick GIF").font(.title).padding(.top)
+                Text("Quickly generate a GIF using ffmpeg")
             }
             
-            Text("\(importedCount) file(s) imported")
-            
-            HStack {
-                Text("Framerate:")
-                TextField("10", text: numericFramerate)
-                    .frame(width: 60)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-            }
-            
-            HStack {
-                Text("Resolution (width):")
-                TextField("640", text: numericResolution)
-                    .frame(width: 60)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-            }
-            
-            Button("Generate GIF") {
-                generateGIF()
-            }
-            .disabled(selectedPaths.isEmpty)
-            
-            if isInProgress {
-                ProgressView(value: progress)
-                    .progressViewStyle(LinearProgressViewStyle())
-                    .frame(width: 200)
-            }
-            
-            Text(status)
-                .font(.caption)
-                .foregroundStyle(.gray)
-                .padding(.top, 5)
-            
-            if let gifPath = gifPreviewPath {
-                VStack(spacing: 10) {
-                    Text("Preview:")
-                    
-                    AnimatedGIFView(gifPath: gifPath)
-                        .frame(width: 360, height: 360)
-                        .cornerRadius(8)
-                    
-                    Button("Export") {
-                        exportFile()
+            VStack(spacing: 20) {
+                Button("Select images or folder") {
+                    selectFiles()
+                }
+                
+                Text("\(importedCount) file(s) imported")
+                
+                HStack {
+                    Text("Framerate:")
+                    TextField("10", text: numericFramerate)
+                        .frame(width: 60)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                
+                HStack {
+                    Text("Resolution (width):")
+                    TextField("640", text: numericResolution)
+                        .frame(width: 60)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                }
+                
+                Button("Generate GIF") {
+                    generateGIF()
+                }
+                .disabled(selectedPaths.isEmpty)
+                
+                if isInProgress {
+                    ProgressView(value: progress)
+                        .progressViewStyle(LinearProgressViewStyle())
+                        .frame(width: 200)
+                }
+                
+                Text(status)
+                    .font(.caption)
+                    .foregroundStyle(.gray)
+                    .padding(.top, 5)
+                
+                if let gifPath = gifPreviewPath {
+                    VStack(spacing: 10) {
+                        Text("Preview:")
+                        
+                        AnimatedGIFView(gifPath: gifPath)
+                            .frame(width: 360, height: 360)
+                            .cornerRadius(8)
+                        
+                        Button("Export") {
+                            exportFile()
+                        }
                     }
                 }
             }
+            .padding(10)
+            .frame(width: 400)
+            Spacer()
         }
-        .padding()
-        .frame(width: 400)
     }
     
     func detectMajorityFileFormat(from paths: [String]) -> String? {

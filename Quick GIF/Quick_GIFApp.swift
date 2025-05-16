@@ -14,6 +14,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
+struct WindowConfig: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView {
+        let view = NSView()
+        
+        DispatchQueue.main.async {
+            if let window = view.window {
+                window.styleMask.remove(.resizable)
+                window.standardWindowButton(.zoomButton)?.isEnabled = false
+                
+                if let contentView = window.contentView {
+                    let fittingSize = contentView.fittingSize
+                    window.setContentSize(fittingSize)
+                    
+                    window.minSize = fittingSize
+                    window.maxSize = fittingSize
+                }
+            }
+        }
+        return view
+    }
+    
+    func updateNSView(_ nsView: NSView, context: Context) {
+        
+    }
+}
+
 @main
 struct Quick_GIFApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
@@ -21,13 +47,14 @@ struct Quick_GIFApp: App {
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView().background(WindowConfig()).fixedSize()
         }
         .onChange(of: scenePhase) { newPhase in
             if newPhase == .background {
                 cleanTempFolder()
             }
         }
+        .windowResizability(.contentSize)
     }
     
     func cleanTempFolder() {
