@@ -2,7 +2,7 @@
 //  Quick_GIFApp.swift
 //  Quick GIF
 //
-//  Created by Viggo on 15/05/2025.
+//  Created by Viggo Lekdorf on 15/05/2025.
 //
 
 import SwiftUI
