@@ -334,6 +334,14 @@ struct ContentView: View {
             status = "Already generating. Please wait."
             return
         }
+        guard framerate != "0" else {
+            status = "Framerate cannot be zero."
+            return
+        }
+        guard resolution != "0" else {
+            status = "Resolution cannot be zero."
+            return
+        }
         
         do {
             isInProgress = true
