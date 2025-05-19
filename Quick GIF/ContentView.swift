@@ -12,7 +12,7 @@ import Combine
 
 struct ContentView: View {
     @State private var selectedPaths: [String] = []
-    @State private var framerate: String = "10"
+    @State private var framerate: String = "15"
     @State private var resolution: String = "640"
     @State private var status: String = ""
     @State private var gifPreviewPath: String?
@@ -34,6 +34,7 @@ struct ContentView: View {
             }
             
             VStack(spacing: 20) {
+                Text("Press the button below to import files, or drag them into the window")
                 Button("Select images or folder") {
                     selectFiles()
                 }
@@ -42,7 +43,7 @@ struct ContentView: View {
                 
                 HStack {
                     Text("Framerate:")
-                    TextField("10", text: $framerate)
+                    TextField("15", text: $framerate)
                         .frame(width: 60)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
                         .onReceive(Just(framerate)) { newValue in
@@ -100,6 +101,9 @@ struct ContentView: View {
             .frame(width: 400)
             Spacer()
         }
+        .onDrop(of: [.fileURL], isTargeted: nil) { providers in
+            handleDrop(providers: providers)
+        }
     }
     
     func detectMajorityFileFormat(from paths: [String]) -> String? {
@@ -127,6 +131,30 @@ struct ContentView: View {
                 updateImportedCountFromSelection()
             }
         }
+    }
+    
+    func handleDrop(providers: [NSItemProvider]) -> Bool {
+        var found = false
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { (item, error) in
+                    if let url = item as? URL {
+                        DispatchQueue.main.async {
+                            selectedPaths.append(url.path)
+                            updateImportedCountFromSelection()
+                        }
+                    }
+                    else if let data = item as? Data, let url = NSURL(absoluteURLWithDataRepresentation: data, relativeTo: nil) as URL? {
+                        DispatchQueue.main.async {
+                            selectedPaths.append(url.path)
+                            updateImportedCountFromSelection()
+                        }
+                    }
+                }
+            }
+            found = true
+        }
+        return found
     }
     
     func generateGIF() {
