@@ -35,7 +35,7 @@ struct ContentView: View {
             
             VStack(spacing: 20) {
                 Text("Press the button below to import files, or drag them into the window")
-                Button("Select images or folder") {
+                Button("Import images or folder...") {
                     selectFiles()
                 }
                 
